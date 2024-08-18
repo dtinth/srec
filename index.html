@@ -139,7 +139,47 @@
         }
       });
 
-      selectDirBtn.addEventListener("click", async () => {
+      function createFakeDirectoryHandle(url) {
+        return {
+          name: url,
+          async getFileHandle(name, options) {
+            return {
+              name,
+              async createWritable() {
+                const { readable, writable } = new TransformStream();
+                const ws = new WebSocket(url);
+                ws.binaryType = "arraybuffer";
+                ws.onclose = () => {
+                  alert("Connection closed");
+                };
+                ws.onerror = (error) => {
+                  alert("Connection error: " + error.message);
+                };
+                ws.onopen = async () => {
+                  try {
+                    for await (const chunk of readable) {
+                      ws.send(chunk);
+                    }
+                  } finally {
+                    ws.close();
+                  }
+                };
+                return writable.getWriter();
+              },
+            };
+          },
+        };
+      }
+
+      selectDirBtn.addEventListener("click", async (e) => {
+        if (e.altKey) {
+          const url = prompt("Enter a ws:// URL to stream the recording to:");
+          directoryHandle = createFakeDirectoryHandle(url);
+          updateTrackInfo();
+          selectedDirDiv.textContent = `Will stream to: ${url}`;
+          return;
+        }
+
         try {
           directoryHandle = await window.showDirectoryPicker({
             startIn: "videos",
@@ -173,7 +213,11 @@
         writable = await fileHandle.createWritable();
 
         mediaRecorder = new MediaRecorder(combinedStream, {
-          mimeType: "video/x-matroska;codecs=h264",
+          mimeType: MediaRecorder.isTypeSupported(
+            "video/x-matroska;codecs=h264"
+          )
+            ? "video/x-matroska;codecs=h264"
+            : "video/webm;codecs=vp8",
           videoBitsPerSecond: 8000000, // 8 Mbps
         });
 
